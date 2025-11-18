@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>整蛊小惊喜</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; cursor: none; background: #000; }
+        /* 自定义追着鼠标的光标 */
+        .custom-cursor {
+            position: fixed;
+            width: 30px;
+            height: 30px;
+            background: #ff0000;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 9999;
+            transition: transform 0.05s ease;
+        }
+        /* 弹窗样式 */
+        .popup {
+            position: fixed;
+            width: 250px;
+            height: 150px;
+            background: #fff;
+            border: 3px solid #ff0000;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: "Arial", sans-serif;
+            font-size: 16px;
+            font-weight: bold;
+            color: #ff0000;
+            z-index: 10000;
+            animation: shake 0.5s infinite alternate;
+        }
+        .popup button {
+            margin-top: 15px;
+            padding: 8px 15px;
+            background: #ff0000;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        /* 弹窗抖动动画 */
+        @keyframes shake {
+            0% { transform: translate(0, 0); }
+            50% { transform: translate(5px, 5px); }
+            100% { transform: translate(-5px, -5px); }
+        }
+    </style>
+</head>
+<body>
+    <div class="custom-cursor"></div>
+
+    <script>
+        // 1. 自定义光标追着鼠标跑
+        const cursor = document.querySelector('.custom-cursor');
+        document.addEventListener('mousemove', (e) => {
+            cursor.style.left = `${e.clientX - 15}px`;
+            cursor.style.top = `${e.clientY - 15}px`;
+        });
+
+        // 2. 无限弹出关不掉的弹窗
+        function createPopup() {
+            const popup = document.createElement('div');
+            popup.className = 'popup';
+            // 随机位置
+            const x = Math.random() * (window.innerWidth - 250);
+            const y = Math.random() * (window.innerHeight - 150);
+            popup.style.left = `${x}px`;
+            popup.style.top = `${y}px`;
+            // 弹窗内容
+            popup.innerHTML = `
+                哈哈被整蛊啦！<br>
+                想关掉？没门！
+                <button onclick="this.parentElement.remove()">关闭</button>
+            `;
+            document.body.appendChild(popup);
+
+            // 按钮点击陷阱：关一个弹两个
+            const btn = popup.querySelector('button');
+            btn.addEventListener('click', () => {
+                setTimeout(createPopup, 300);
+                setTimeout(createPopup, 500);
+            });
+        }
+
+        // 初始弹出3个，之后越关越多
+        setTimeout(() => {
+            createPopup();
+            createPopup();
+            createPopup();
+        }, 1000);
+
+        // 禁止右键和F12
+        document.addEventListener('contextmenu', (e) => e.preventDefault());
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && e.key === 'I')) {
+                e.preventDefault();
+                createPopup(); // 按F12额外弹一个
+            }
+        });
+    </script>
+</body>
+</html>
