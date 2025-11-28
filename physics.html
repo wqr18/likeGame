@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI+物理：转动惯量可视化模拟</title>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f0f2f5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 0;
+      padding: 20px;
+      color: #333;
+    }
+    h1 { color: #2c3e50; margin-bottom: 10px; }
+    .container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      background: white;
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      max-width: 900px;
+      width: 100%;
+    }
+    .controls {
+      flex: 1;
+      min-width: 300px;
+      padding-right: 20px;
+      border-right: 1px solid #eee;
+    }
+    .canvas-container {
+      flex: 1;
+      min-width: 300px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+    }
+    .control-group {
+      margin-bottom: 25px;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: bold;
+      color: #555;
+    }
+    input[type=range] {
+      width: 100%;
+      cursor: pointer;
+    }
+    .value-display {
+      float: right;
+      color: #3498db;
+      font-weight: bold;
+    }
+    .result-box {
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #e8f6f3;
+      border: 1px solid #d1f2eb;
+      border-radius: 8px;
+    }
+    .result-formula {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 1.1em;
+      color: #16a085;
+    }
+    canvas {
+      border: 2px solid #ddd;
+      border-radius: 50%;
+      background-color: #fafafa;
+    }
+    .note {
+      font-size: 0.85em;
+      color: #777;
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>AI + 物理转动惯量 (Moment of Inertia)</h1>
+<p>调整参数，观察转动惯量 I 的变化及物体分布。</p >
+
+<div class="container">
+  <div class="controls">
+    <h3>参数设置</h3>
+
+    <div class="control-group">
+      <label>刚体个数 (N) <span id="val-count" class="value-display">4</span></label>
+      <input type="range" id="input-count" min="1" max="20" value="4" step="1">
+      <div class="note">转轴周围均匀分布的质点数量</div>
+    </div>
+
+    <div class="control-group">
+      <label>旋转半径 (r) <span id="val-radius" class="value-display">100 m</span></label>
+      <input type="range" id="input-radius" min="10" max="180" value="100" step="5">
+      <div class="note">质点距离中心定轴的距离</div>
+    </div>
+
+    <div class="control-group">
+      <label>单体质量 (m) <span id="val-mass" class="value-display">5 kg</span></label>
+      <input type="range" id="input-mass" min="1" max="50" value="5" step="1">
+      <div class="note">每个质点的质量大小</div>
+    </div>
+
+    <div class="result-box">
+      <h3>计算结果</h3>
+      <p>公式: \(I = N \times m \times r^2\)</p >
+      <p class="result-formula">
+        I = <span id="res-count">4</span> × <span id="res-mass">5</span> × <span id="res-radius">100</span>²
+      </p >
+      <h2 style="color: #2c3e50;">Total I = <span id="total-inertia">200000</span> <span style="font-size:0.6em">kg·m²</span></h2>
+    </div>
+  </div>
+
+  <div class="canvas-container">
+    <canvas id="simCanvas" width="400" height="400"></canvas>
+    <p style="font-size: 0.9em; color: #666;">可视化动画：系统正在绕中心轴旋转</p >
+  </div>
+</div>
+
+<script>
+  // 获取DOM元素
+  const canvas = document.getElementById('simCanvas');
+  const ctx = canvas.getContext('2d');
+
+  const inputCount = document.getElementById('input-count');
+  const inputRadius = document.getElementById('input-radius');
+  const inputMass = document.getElementById('input-mass');
+
+  const valCount = document.getElementById('val-count');
+  const valRadius = document.getElementById('val-radius');
+  const valMass = document.getElementById('val-mass');
+
+  const resCount = document.getElementById('res-count');
+  const resRadius = document.getElementById('res-radius');
+  const resMass = document.getElementById('res-mass');
+  const totalInertia = document.getElementById('total-inertia');
+
+  let rotationAngle = 0;
+
+  // 主更新函数
+  function update() {
+    // 获取当前值
+    const N = parseInt(inputCount.value);
+    const r = parseInt(inputRadius.value);
+    const m = parseInt(inputMass.value);
+
+    // 更新文本显示
+    valCount.textContent = N;
+    valRadius.textContent = r + " m";
+    valMass.textContent = m + " kg";
+
+    resCount.textContent = N;
+    resRadius.textContent = r;
+    resMass.textContent = m;
+
+    // 计算转动惯量 (简化单位，直接数值计算)
+    const I = N * m * Math.pow(r, 2);
+    totalInertia.textContent = I.toLocaleString();
+
+    // 绘图
+    draw(N, r, m);
+  }
+
+  // 绘图函数
+  function draw(N, r, m) {
+    // 清空画布
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+
+    // 绘制中心轴
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#e74c3c';
+    ctx.fill();
+
+    // 绘制连接线和质点
+    // 为了视觉效果，将物理半径 r 映射到画布像素 (稍微调整比例以免溢出)
+    // 假设最大输入180对应画布半径190
+    const visualRadius = r;
+
+    // 根据质量改变球体大小 (视觉辅助)
+    const ballSize = 5 + (m / 5);
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(rotationAngle); // 应用旋转
+
+    for (let i = 0; i < N; i++) {
+      const angle = (Math.PI * 2 / N) * i;
+      const x = Math.cos(angle) * visualRadius;
+      const y = Math.sin(angle) * visualRadius;
+
+      // 绘制连接杆 (假设轻质杆)
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(x, y);
+      ctx.strokeStyle = '#ccc';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // 绘制质点
+      ctx.beginPath();
+      ctx.arc(x, y, ballSize, 0, Math.PI * 2);
+      ctx.fillStyle = '#3498db';
+      ctx.fill();
+      ctx.strokeStyle = '#2980b9';
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  // 动画循环
+  function animate() {
+    // 让它转动起来
+    rotationAngle += 0.02;
+    update(); // 每次都要重绘
+    requestAnimationFrame(animate);
+  }
+
+  // 监听输入变化
+  inputCount.addEventListener('input', update);
+  inputRadius.addEventListener('input', update);
+  inputMass.addEventListener('input', update);
+
+  // 启动
+  animate();
+
+</script>
+</body>
+</html>
