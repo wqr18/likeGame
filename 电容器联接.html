@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>物理实验室：电容器动态模拟</title>
+    <style>
+        :root { --accent: #00d2ff; --bg: #0f172a; --panel: #1e293b; --text: #f8fafc; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; height: 100vh; }
+        
+        /* 左侧控制面板 */
+        .sidebar { width: 340px; background: var(--panel); padding: 25px; border-right: 1px solid #334155; display: flex; flex-direction: column; box-shadow: 10px 0 30px rgba(0,0,0,0.5); z-index: 10; }
+        .logo { font-size: 1.4rem; font-weight: 800; color: var(--accent); letter-spacing: 1px; margin-bottom: 30px; display: flex; align-items: center; gap: 10px; }
+        .logo::before { content: '⫽'; font-size: 2rem; }
+
+        .control-group { background: #0f172a66; padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #334155; }
+        label { display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 10px; color: #94a3b8; }
+        label b { color: var(--accent); }
+        
+        input[type="range"] { width: 100%; height: 6px; border-radius: 3px; accent-color: var(--accent); cursor: pointer; }
+        select { width: 100%; background: #334155; color: white; border: 1px solid #475569; padding: 10px; border-radius: 6px; outline: none; transition: 0.3s; }
+        select:hover { border-color: var(--accent); }
+
+        /* 右侧展示区 */
+        .view-port { flex: 1; position: relative; display: flex; flex-direction: column; background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%); }
+        canvas { width: 100%; height: 100%; }
+
+        /* 公式面板 */
+        .formula-card { position: absolute; top: 20px; right: 20px; background: rgba(15, 23, 42, 0.9); padding: 20px; border-radius: 12px; border-left: 4px solid var(--accent); backdrop-filter: blur(10px); width: 280px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+        .formula-card h4 { margin: 0 0 10px 0; color: var(--accent); font-size: 0.9rem; }
+        .formula-item { font-family: 'Cambria', serif; font-size: 1.1rem; margin: 5px 0; }
+
+        /* 底部数据栏 */
+        .data-grid { position: absolute; bottom: 20px; left: 20px; right: 20px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+        .data-card { background: rgba(30, 41, 59, 0.8); padding: 15px; border-radius: 12px; border-bottom: 3px solid transparent; transition: 0.3s; }
+        .data-card:hover { border-bottom-color: var(--accent); transform: translateY(-5px); }
+        .data-card label { font-size: 0.75rem; text-transform: uppercase; margin-bottom: 5px; }
+        .data-card div { font-size: 1.4rem; font-weight: 700; color: #fff; }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <div class="logo">吴钦容做的</div>
+    
+    <div class="control-group">
+        <label>电路拓扑模式</label>
+        <select id="mode">
+            <option value="parallel">并联回路 (Parallel)</option>
+            <option value="series">串联回路 (Series)</option>
+        </select>
+    </div>
+
+    <div class="control-group">
+        <label>输入电压 (U) <b id="u_txt">15V</b></label>
+        <input type="range" id="u_val" min="0" max="40" value="15">
+    </div>
+
+    <div class="control-group">
+        <label>电容器 C1 <b id="c1_txt">30μF</b></label>
+        <input type="range" id="c1_val" min="5" max="100" value="30">
+    </div>
+
+    <div class="control-group">
+        <label>电容器 C2 <b id="c2_txt">60μF</b></label>
+        <input type="range" id="c2_val" min="5" max="100" value="60">
+    </div>
+
+    <div style="margin-top: auto; color: #64748b; font-size: 0.8rem; line-height: 1.5;">
+        物理原理：<br>
+        • 并联：电压相等，电容相加<br>
+        • 串联：电荷相等，倒数相加<br>
+        • 动画：展示电子(蓝点)流动路径
+    </div>
+</div>
+
+<div class="view-port">
+    <div class="formula-card">
+        <h4>实时物理计算</h4>
+        <div id="math_output" class="formula-item">Ceq = C1 + C2</div>
+        <div id="math_val" style="font-size: 0.9rem; color: #94a3b8;"></div>
+    </div>
+
+    <canvas id="labCanvas"></canvas>
+    
+    <div class="data-grid">
+        <div class="data-card"><label>等效总电容</label><div id="out_ceq">-</div></div>
+        <div class="data-card"><label>总储电荷量</label><div id="out_q">-</div></div>
+        <div class="data-card"><label>C1 储存能量</label><div id="out_e1">-</div></div>
+        <div class="data-card"><label>C2 储存能量</label><div id="out_e2">-</div></div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('labCanvas');
+    const ctx = canvas.getContext('2d');
+    let width, height;
+    let particles = [];
+    
+    // 初始化与适配
+    function resize() {
+        const dpr = window.devicePixelRatio || 1;
+        width = canvas.clientWidth;
+        height = canvas.clientHeight;
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        ctx.scale(dpr, dpr);
+        initParticles();
+    }
+
+    class Particle {
+        constructor(points) {
+            this.points = points;
+            this.progress = Math.random();
+            this.speed = 0.002 + Math.random() * 0.002;
+        }
+        draw() {
+            if (!this.points || this.points.length < 2) return;
+            const totalLen = this.points.length - 1;
+            const pos = this.progress * totalLen;
+            const idx = Math.floor(pos);
+            const ratio = pos - idx;
+
+            const p1 = this.points[idx];
+            const p2 = this.points[idx + 1] || p1;
+
+            const x = p1.x + (p2.x - p1.x) * ratio;
+            const y = p1.y + (p2.y - p1.y) * ratio;
+
+            ctx.fillStyle = '#00d2ff';
+            ctx.shadowBlur = 5;
+            ctx.shadowColor = '#00d2ff';
+            ctx.beginPath();
+            ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            const voltage = parseFloat(document.getElementById('u_val').value);
+            this.progress += this.speed * (voltage / 20);
+            if (this.progress >= 1) this.progress = 0;
+        }
+    }
+
+    function initParticles() {
+        particles = [];
+        const mode = document.getElementById('mode').value;
+        const centerX = width / 2;
+        const centerY = height / 2;
+
+        if (mode === 'parallel') {
+            // 分成两条完整支路循环
+            const path1 = [
+                {x: 150, y: centerY}, {x: 150, y: centerY-80}, {x: 450, y: centerY-80}, 
+                {x: 450, y: centerY}, {x: 150, y: centerY}
+            ];
+            const path2 = [
+                {x: 150, y: centerY}, {x: 150, y: centerY+80}, {x: 450, y: centerY+80}, 
+                {x: 450, y: centerY}, {x: 150, y: centerY}
+            ];
+            for(let i=0; i<15; i++) {
+                particles.push(new Particle(path1));
+                particles.push(new Particle(path2));
+            }
+        } else {
+            // 串联单循环
+            const pathS = [
+                {x: 150, y: centerY}, {x: 150, y: centerY-80}, {x: 500, y: centerY-80},
+                {x: 500, y: centerY+80}, {x: 150, y: centerY+80}, {x: 150, y: centerY}
+            ];
+            for(let i=0; i<25; i++) particles.push(new Particle(pathS));
+        }
+    }
+
+    function drawCapacitor(x, y, label, capValue, voltage) {
+        const h = 30 + capValue * 0.5;
+        const gap = 12;
+        
+        // 极板绘制
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 4;
+        ctx.lineCap = "round";
+        
+        ctx.beginPath();
+        ctx.moveTo(x - gap/2, y - h/2); ctx.lineTo(x - gap/2, y + h/2);
+        ctx.moveTo(x + gap/2, y - h/2); ctx.lineTo(x + gap/2, y + h/2);
+        ctx.stroke();
+
+        // 电荷显示逻辑
+        ctx.font = "bold 12px Arial";
+        const chargeCount = Math.min(Math.floor(voltage / 3), 10);
+        for(let i=0; i<chargeCount; i++) {
+            const py = y - h/2 + (i+1) * (h/(chargeCount+1));
+            ctx.fillStyle = "#ff4757"; ctx.fillText("+", x - 22, py + 4);
+            ctx.fillStyle = "#00d2ff"; ctx.fillText("-", x + 14, py + 4);
+        }
+
+        // 文字信息
+        ctx.fillStyle = "#94a3b8";
+        ctx.font = "12px Inter";
+        ctx.textAlign = "center";
+        ctx.fillText(`${label}: ${capValue}μF`, x, y - h/2 - 15);
+        ctx.fillStyle = "#fff";
+        ctx.fillText(`${voltage.toFixed(1)}V`, x, y + h/2 + 20);
+    }
+
+    function animate() {
+        ctx.clearRect(0, 0, width, height);
+        
+        const mode = document.getElementById('mode').value;
+        const U = parseFloat(document.getElementById('u_val').value);
+        const C1 = parseFloat(document.getElementById('c1_val').value);
+        const C2 = parseFloat(document.getElementById('c2_val').value);
+
+        // 核心物理逻辑
+        let Ceq, Qtotal, U1, U2, Q1, Q2;
+        if (mode === 'parallel') {
+            Ceq = C1 + C2;
+            U1 = U2 = U;
+            Q1 = C1 * U; Q2 = C2 * U; Qtotal = Q1 + Q2;
+            document.getElementById('math_output').innerHTML = "C<sub>eq</sub> = C<sub>1</sub> + C<sub>2</sub>";
+            document.getElementById('math_val').innerText = `${C1} + ${C2} = ${Ceq}μF`;
+        } else {
+            Ceq = 1 / (1/C1 + 1/C2);
+            Qtotal = Q1 = Q2 = Ceq * U;
+            U1 = Q1 / C1; U2 = Q2 / C2;
+            document.getElementById('math_output').innerHTML = "1/C<sub>eq</sub> = 1/C<sub>1</sub> + 1/C<sub>2</sub>";
+            document.getElementById('math_val').innerText = `1/(${C1}) + 1/(${C2}) → ${Ceq.toFixed(2)}μF`;
+        }
+
+        // 更新UI数值
+        document.getElementById('u_txt').innerText = U + "V";
+        document.getElementById('c1_txt').innerText = C1 + "μF";
+        document.getElementById('c2_txt').innerText = C2 + "μF";
+        document.getElementById('out_ceq').innerText = Ceq.toFixed(2) + " μF";
+        document.getElementById('out_q').innerText = Qtotal.toFixed(0) + " μC";
+        document.getElementById('out_e1').innerText = (0.5 * C1 * U1 * U1 / 1000).toFixed(2) + " mJ";
+        document.getElementById('out_e2').innerText = (0.5 * C2 * U2 * U2 / 1000).toFixed(2) + " mJ";
+
+        // 绘制电路导线
+        ctx.strokeStyle = "#334155";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+        const centerX = width/2; const centerY = height/2;
+
+        // 绘制电源 (左侧)
+        ctx.beginPath();
+        ctx.moveTo(150, centerY-15); ctx.lineTo(150, centerY-40);
+        ctx.moveTo(130, centerY-15); ctx.lineTo(170, centerY-15); // 正
+        ctx.moveTo(140, centerY+15); ctx.lineTo(160, centerY+15); // 负
+        ctx.moveTo(150, centerY+15); ctx.lineTo(150, centerY+40);
+        ctx.stroke();
+        ctx.fillStyle = "#fff"; ctx.fillText("U Source", 110, centerY);
+
+        if (mode === 'parallel') {
+            ctx.beginPath();
+            ctx.moveTo(150, centerY-40); ctx.lineTo(150, centerY-80); ctx.lineTo(250, centerY-80);
+            ctx.moveTo(150, centerY+40); ctx.lineTo(150, centerY+80); ctx.lineTo(250, centerY+80);
+            ctx.moveTo(350, centerY-80); ctx.lineTo(450, centerY-80); ctx.lineTo(450, centerY);
+            ctx.moveTo(350, centerY+80); ctx.lineTo(450, centerY+80); ctx.lineTo(450, centerY);
+            ctx.moveTo(450, centerY); ctx.lineTo(150, centerY); 
+            ctx.stroke();
+            drawCapacitor(300, centerY-80, "C1", C1, U1);
+            drawCapacitor(300, centerY+80, "C2", C2, U2);
+        } else {
+            ctx.beginPath();
+            ctx.moveTo(150, centerY-40); ctx.lineTo(150, centerY-80); ctx.lineTo(220, centerY-80);
+            ctx.moveTo(280, centerY-80); ctx.lineTo(370, centerY-80);
+            ctx.moveTo(430, centerY-80); ctx.lineTo(500, centerY-80);
+            ctx.lineTo(500, centerY+80); ctx.lineTo(150, centerY+80); ctx.lineTo(150, centerY+40);
+            ctx.stroke();
+            drawCapacitor(250, centerY-80, "C1", C1, U1);
+            drawCapacitor(400, centerY-80, "C2", C2, U2);
+        }
+
+        // 绘制粒子
+        if (U > 0) particles.forEach(p => p.draw());
+
+        requestAnimationFrame(animate);
+    }
+
+    // 事件绑定
+    window.addEventListener('resize', resize);
+    document.getElementById('mode').onchange = initParticles;
+    
+    // 初始启动
+    resize();
+    animate();
+</script>
+
+</body>
+</html>

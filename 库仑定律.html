@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>进阶物理实验室：库仑力与电场可视化</title>
+    <style>
+        :root { --primary: #2563eb; --bg: #f8fafc; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); margin: 0; display: flex; height: 100vh; }
+        
+        /* 侧边控制栏 */
+        .sidebar { width: 320px; background: white; padding: 20px; box-shadow: 2px 0 10px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 20px; z-index: 10; }
+        h2 { font-size: 1.25rem; color: #1e293b; margin: 0; border-left: 4px solid var(--primary); padding-left: 10px; }
+        
+        .control-group { background: #f1f5f9; padding: 12px; border-radius: 8px; }
+        label { display: block; font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 8px; }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        
+        /* 主显示区 */
+        .main-content { flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+        canvas { background: #fff; box-shadow: 0 0 20px rgba(0,0,0,0.05); cursor: move; }
+        
+        /* 数据面板 */
+        .data-panel { position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.9); padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; font-family: monospace; }
+        .data-item { margin-bottom: 5px; font-size: 14px; }
+        .data-value { color: var(--primary); font-weight: bold; }
+
+        .btn-group { display: flex; gap: 10px; }
+        button { flex: 1; padding: 8px; border: none; border-radius: 5px; background: var(--primary); color: white; cursor: pointer; transition: 0.2s; }
+        button:hover { opacity: 0.9; }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <h2>参数调节面板</h2>
+    
+    <div class="control-group">
+        <label>电荷 q₁: <span id="v1">5</span> μC</label>
+        <input type="range" id="q1" min="-20" max="20" value="10">
+        <div class="btn-group" style="margin-top:5px">
+            <button onclick="document.getElementById('q1').value=10">正电</button>
+            <button onclick="document.getElementById('q1').value=-10" style="background:#ef4444">负电</button>
+        </div>
+    </div>
+
+    <div class="control-group">
+        <label>电荷 q₂: <span id="v2">-5</span> μC</label>
+        <input type="range" id="q2" min="-20" max="20" value="-10">
+        <div class="btn-group" style="margin-top:5px">
+            <button onclick="document.getElementById('q2').value=10">正电</button>
+            <button onclick="document.getElementById('q2').value=-10" style="background:#ef4444">负电</button>
+        </div>
+    </div>
+
+    <div class="control-group">
+        <label>中心距离 r: <span id="vr">200</span> px</label>
+        <input type="range" id="dist" min="60" max="500" value="250">
+    </div>
+
+    <div class="control-group">
+        <label>显示设置</label>
+        <label style="font-weight:normal"><input type="checkbox" id="showLines" checked> 显示电场线</label>
+        <label style="font-weight:normal"><input type="checkbox" id="showForce" checked> 显示库仑力矢量</label>
+    </div>
+
+    <div style="font-size: 12px; color: #94a3b8; line-height: 1.5;">
+        * 物理提示：电场线从正电荷出发，终止于负电荷。库仑力遵循平方反比定律。
+    </div>
+</div>
+
+<div class="main-content">
+    <div class="data-panel">
+        <div class="data-item">距离 r: <span class="data-value" id="dR">0</span> m</div>
+        <div class="data-item">库仑力 F: <span class="data-value" id="dF">0</span> N</div>
+        <div class="data-item">电场性质: <span class="data-value" id="dType">吸引</span></div>
+    </div>
+    <canvas id="stage"></canvas>
+</div>
+
+<script>
+    const canvas = document.getElementById('stage');
+    const ctx = canvas.getContext('2d');
+    const K = 8987.5; // 仿真比例常数
+
+    function resize() {
+        canvas.width = window.innerWidth - 320;
+        canvas.height = window.innerHeight;
+    }
+    window.onresize = resize;
+    resize();
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        const q1 = parseFloat(document.getElementById('q1').value);
+        const q2 = parseFloat(document.getElementById('q2').value);
+        const r = parseFloat(document.getElementById('dist').value);
+        const showLines = document.getElementById('showLines').checked;
+        const showForce = document.getElementById('showForce').checked;
+
+        // 更新UI数值
+        document.getElementById('v1').innerText = q1;
+        document.getElementById('v2').innerText = q2;
+        document.getElementById('vr').innerText = r;
+
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+        const p1 = { x: cx - r/2, y: cy, q: q1 };
+        const p2 = { x: cx + r/2, y: cy, q: q2 };
+
+        // 1. 绘制电场线 (简易数值模拟)
+        if (showLines && (q1 !== 0 || q2 !== 0)) {
+            drawFieldLines(p1, p2);
+        }
+
+        // 2. 计算物理量
+        const force = Math.abs(K * q1 * q2 / Math.pow(r/10, 2));
+        document.getElementById('dR').innerText = (r/100).toFixed(2);
+        document.getElementById('dF').innerText = force.toExponential(2);
+        document.getElementById('dType').innerText = (q1 * q2 < 0) ? "吸引 (Attraction)" : "排斥 (Repulsion)";
+
+        // 3. 绘制力矢量
+        if (showForce && q1 !== 0 && q2 !== 0) {
+            const fSize = Math.min(force / 10, 150);
+            const dir = q1 * q2 < 0 ? 1 : -1;
+            drawArrow(p1.x, p1.y, p1.x + fSize * dir, p1.y, '#e11d48');
+            drawArrow(p2.x, p2.y, p2.x - fSize * dir, p2.y, '#e11d48');
+        }
+
+        // 4. 绘制点电荷
+        drawCharge(p1);
+        drawCharge(p2);
+
+        requestAnimationFrame(draw);
+    }
+
+    function drawCharge(p) {
+        if (p.q === 0) return;
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 20);
+        const color = p.q > 0 ? '#ef4444' : '#3b82f6';
+        grad.addColorStop(0, '#fff');
+        grad.addColorStop(1, color);
+        
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 15 + Math.abs(p.q)/2, 0, Math.PI*2);
+        ctx.fillStyle = grad;
+        ctx.fill();
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = color;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+    }
+
+    function drawFieldLines(p1, p2) {
+        ctx.strokeStyle = 'rgba(100, 116, 139, 0.2)';
+        ctx.lineWidth = 1;
+        
+        // 简化版：围绕电荷发射探测线
+        const charges = [p1, p2];
+        charges.forEach(source => {
+            if (Math.abs(source.q) < 1) return;
+            const numLines = 16;
+            for (let i = 0; i < numLines; i++) {
+                let angle = (i / numLines) * Math.PI * 2;
+                let curX = source.x + Math.cos(angle) * 10;
+                let curY = source.y + Math.sin(angle) * 10;
+                
+                ctx.beginPath();
+                ctx.moveTo(curX, curY);
+                
+                for (let step = 0; step < 100; step++) {
+                    // 计算该点的总场强方向
+                    let ex = 0, ey = 0;
+                    charges.forEach(c => {
+                        const dx = curX - c.x;
+                        const dy = curY - c.y;
+                        const d2 = dx*dx + dy*dy;
+                        const e = c.q / d2;
+                        ex += e * dx / Math.sqrt(d2);
+                        ey += e * dy / Math.sqrt(d2);
+                    });
+                    
+                    const moveDir = source.q > 0 ? 1 : -1;
+                    const speed = 5;
+                    const norm = Math.sqrt(ex*ex + ey*ey);
+                    curX += (ex/norm) * speed * moveDir;
+                    curY += (ey/norm) * speed * moveDir;
+                    
+                    ctx.lineTo(curX, curY);
+                    if (curX < 0 || curX > canvas.width || curY < 0 || curY > canvas.height) break;
+                }
+                ctx.stroke();
+            }
+        });
+    }
+
+    function drawArrow(x1, y1, x2, y2, color) {
+        const head = 10;
+        const angle = Math.atan2(y2 - y1, x2 - x1);
+        ctx.beginPath();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 4;
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.lineTo(x2 - head * Math.cos(angle - Math.PI/6), y2 - head * Math.sin(angle - Math.PI/6));
+        ctx.moveTo(x2, y2);
+        ctx.lineTo(x2 - head * Math.cos(angle + Math.PI/6), y2 - head * Math.sin(angle + Math.PI/6));
+        ctx.stroke();
+    }
+
+    draw();
+</script>
+</body>
+</html>
