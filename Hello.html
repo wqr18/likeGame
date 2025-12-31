@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026 时空粒子重组</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@900&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050505;
+            overflow: hidden;
+            font-family: 'Montserrat', sans-serif;
+            color: white;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #ui-layer {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            pointer-events: none; /* 让鼠标穿透UI层，不影响画布交互 */
+            z-index: 10;
+        }
+
+        .countdown-text {
+            font-size: 1.2rem;
+            letter-spacing: 3px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        #timer {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 10px rgba(255,255,255,0.5);
+        }
+
+        .controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 20;
+        }
+
+        button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-family: 'Montserrat', sans-serif;
+            transition: all 0.3s;
+            backdrop-filter: blur(5px);
+            border-radius: 30px;
+        }
+
+        button:hover {
+            background: white;
+            color: black;
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.8);
+        }
+
+        /* 提示语 */
+        #hint {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 14px;
+            color: rgba(255,255,255,0.3);
+            pointer-events: none;
+            opacity: 1;
+            transition: opacity 1s;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="canvas"></canvas>
+
+    <div id="hint">移动鼠标 扰动时光</div>
+
+    <div id="ui-layer">
+        <div class="countdown-text">距离 2026 还有</div>
+        <div id="timer">00:00:00</div>
+    </div>
+
+    <div class="controls">
+        <button onclick="triggerTransition()">🚀 启动跨年跃迁</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const timerElement = document.getElementById('timer');
+        const hintElement = document.getElementById('hint');
+
+        let particles = [];
+        let width, height;
+        let mouse = { x: null, y: null, radius: 100 };
+        let currentText = "2025";
+        let isExploded = false;
+        let animationId;
+
+        // 初始化画布
+        function initCanvas() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        // 粒子类
+        class Particle {
+            constructor(x, y) {
+                this.x = Math.random() * width; // 初始随机位置
+                this.y = Math.random() * height;
+                this.targetX = x;
+                this.targetY = y;
+                this.size = Math.random() * 2 + 1;
+                // 颜色可以是白色，或者带一点点蓝/金
+                const colors = ['#ffffff', '#e0e0e0', '#87CEFA', '#FFD700'];
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                
+                this.density = Math.random() * 30 + 1;
+                this.friction = 0.95; // 摩擦力，用于归位
+                this.ease = 0.05; // 移动平滑度
+                this.vx = 0;
+                this.vy = 0;
+            }
+
+            update() {
+                // 计算与鼠标的距离
+                let dx = mouse.x - this.x;
+                let dy = mouse.y - this.y;
+                let distance = Math.sqrt(dx*dx + dy*dy);
+                let forceDirectionX = dx / distance;
+                let forceDirectionY = dy / distance;
+                let maxDistance = mouse.radius;
+                
+                // 鼠标斥力计算
+                let force = (maxDistance - distance) / maxDistance;
+                let directionX = forceDirectionX * force * this.density;
+                let directionY = forceDirectionY * force * this.density;
+
+                if (distance < mouse.radius) {
+                    // 如果鼠标靠近，粒子被推开
+                    this.vx -= directionX;
+                    this.vy -= directionY;
+                } else {
+                    // 如果鼠标远离，粒子回到目标位置
+                    if (this.x !== this.targetX) {
+                        let dx = this.x - this.targetX;
+                        this.vx -= dx * this.ease; // 弹簧效果
+                    }
+                    if (this.y !== this.targetY) {
+                        let dy = this.y - this.targetY;
+                        this.vy -= dy * this.ease;
+                    }
+                }
+
+                this.vx *= this.friction;
+                this.vy *= this.friction;
+
+                this.x += this.vx;
+                this.y += this.vy;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.closePath();
+                ctx.fill();
+            }
+            
+            // 更新目标位置（用于文字变换）
+            newTarget(x, y) {
+                this.targetX = x;
+                this.targetY = y;
+                // 变换时给一个随机爆发力
+                this.vx = (Math.random() - 0.5) * 50; 
+                this.vy = (Math.random() - 0.5) * 50;
+            }
+        }
+
+        // 核心：将文字转化为粒子坐标
+        function createParticlesFromText(text) {
+            ctx.clearRect(0,0, width, height);
+            
+            // 临时绘制文字来获取像素数据
+            let fontSize = Math.min(width / 5, 250); // 自适应字体大小
+            ctx.font = `900 ${fontSize}px Montserrat, Arial`;
+            ctx.fillStyle = 'white';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, width / 2, height / 2);
+
+            // 获取像素数据
+            // 为了性能，只扫描部分区域或降低采样率
+            const textCoordinates = ctx.getImageData(0, 0, width, height);
+            const buffer32 = new Uint32Array(textCoordinates.data.buffer);
+            
+            let newCoordinates = [];
+            // 采样间隔，越小粒子越密集，性能消耗越大
+            let gap = 5; 
+            if(width < 768) gap = 3; // 手机端稍微密集点因为字体小
+
+            for (let y = 0; y < height; y += gap) {
+                for (let x = 0; x < width; x += gap) {
+                    if (buffer32[y * width + x] & 0xff000000) { // 检查是否有像素（非透明）
+                        newCoordinates.push({x, y});
+                    }
+                }
+            }
+
+            // 调整粒子数量
+            if (particles.length < newCoordinates.length) {
+                // 如果现有粒子不够，补充新粒子
+                let diff = newCoordinates.length - particles.length;
+                for (let i = 0; i < diff; i++) {
+                    particles.push(new Particle(newCoordinates[i].x, newCoordinates[i].y));
+                }
+            } else {
+                // 如果现有粒子太多，删除多余的
+                particles.splice(newCoordinates.length);
+            }
+
+            // 更新现有粒子的目标
+            for (let i = 0; i < newCoordinates.length; i++) {
+                particles[i].newTarget(newCoordinates[i].x, newCoordinates[i].y);
+            }
+        }
+
+        // 动画循环
+        function animate() {
+            ctx.fillStyle = 'rgba(5, 5, 5, 0.2)'; // 拖尾效果，背景不是完全清除
+            ctx.fillRect(0, 0, width, height);
+
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // 交互事件
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = e.x;
+            mouse.y = e.y;
+            hintElement.style.opacity = 0; // 一旦动了鼠标，提示消失
+        });
+        
+        window.addEventListener('touchmove', (e) => {
+             mouse.x = e.touches[0].clientX;
+             mouse.y = e.touches[0].clientY;
+             hintElement.style.opacity = 0;
+        });
+        
+        // 鼠标移出画布复位
+        window.addEventListener('mouseout', () => {
+            mouse.x = undefined;
+            mouse.y = undefined;
+        });
+
+        window.addEventListener('resize', () => {
+            initCanvas();
+            createParticlesFromText(currentText);
+        });
+
+        // --- 逻辑控制 ---
+        
+        initCanvas();
+        createParticlesFromText("2025"); // 初始文字
+        animate();
+
+        // 倒计时逻辑
+        let targetDate = new Date("January 1, 2026 00:00:00").getTime();
+        
+        // 演示/触发函数
+        window.triggerTransition = function() {
+            if(isExploded) return;
+            isExploded = true;
+            
+            // 1. 倒计时清零
+            targetDate = new Date().getTime(); 
+            timerElement.innerText = "00:00:00";
+            
+            // 2. 爆炸效果：通过改变所有粒子的vx/vy实现
+            particles.forEach(p => {
+                p.vx = (Math.random() - 0.5) * 100;
+                p.vy = (Math.random() - 0.5) * 100;
+            });
+
+            // 3. 延迟一点点后，重组为2026
+            setTimeout(() => {
+                currentText = "2026";
+                createParticlesFromText("2026");
+                
+                // 再过几秒，显示 Happy New Year
+                setTimeout(() => {
+                   currentText = "HAPPY NEW YEAR";
+                   createParticlesFromText("HAPPY\nNEW YEAR"); // 简单处理换行通常需要复杂逻辑，这里简化
+                   // 实际上canvas fillText不支持自动换行，这里为了简单，我们切换显示内容
+                   createParticlesFromText("2026"); // 保持2026不动或者显示新年
+                   
+                   // 简单的烟花背景作为点缀（可选，这里用背景色闪烁代替复杂烟花以保持极简）
+                   document.body.style.backgroundColor = "#1a0033";
+                   setTimeout(()=> document.body.style.backgroundColor = "#050505", 500);
+                }, 3000);
+                
+            }, 800);
+        };
+
+        setInterval(() => {
+            if(isExploded) return;
+            
+            const now = new Date().getTime();
+            const distance = targetDate - now;
+
+            if (distance < 0) {
+                triggerTransition();
+                return;
+            }
+
+            const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+            
+            timerElement.innerText = 
+                `${hours.toString().padStart(2,'0')}:${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')}`;
+        }, 1000);
+
+    </script>
+</body>
+</html>
